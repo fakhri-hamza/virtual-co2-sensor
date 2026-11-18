@@ -70,3 +70,15 @@ def load() -> tuple[pd.DataFrame, pd.DataFrame]:
     train = pd.concat([_read("datatest.txt"), _read("datatraining.txt")]).sort_values("date")
     test = _read("datatest2.txt")
     return add_time_features(train.reset_index(drop=True)), add_time_features(test)
+
+
+def condition_group(df: pd.DataFrame) -> np.ndarray:
+    """Which regime each minute is in, using only the cheap light sensor and the clock.
+
+    'night empty'  00:00-06:00 with lights off: nobody there for hours, CO2 should sit near outdoor air
+    'lights off'   other dark minutes (evenings, weekends): mostly empty, CO2 may still be decaying
+    'lights on'    someone is probably there, or it is daylight
+    """
+    hour = df["date"].dt.hour
+    off = df["Light"] < 50
+    return np.where(off & (hour < 6), "night empty", np.where(off, "lights off", "lights on"))
