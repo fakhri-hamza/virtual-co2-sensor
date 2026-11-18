@@ -1,6 +1,6 @@
 [project]
 name = "vsensor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Virtual CO2 sensor and occupancy detection from cheap sensors, with conformal uncertainty"
 requires-python = ">=3.10"
 
