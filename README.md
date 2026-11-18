@@ -1,5 +1,7 @@
 # Virtual CO₂ Sensor
 
+[![ci](https://github.com/Zolnarb1/virtual-co2-sensor/actions/workflows/ci.yml/badge.svg)](https://github.com/Zolnarb1/virtual-co2-sensor/actions/workflows/ci.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Can cheap sensors (temperature, humidity, light) replace a CO₂ sensor, for estimating air quality or for detecting whether a room is occupied? And can the model tell when the real sensor is wrong?**
 
 Uses the [UCI Occupancy Detection dataset](https://archive.ics.uci.edu/dataset/357/occupancy+detection) (Candanedo & Feldheim, 2016): one office, one reading per minute, February 2015, with ground-truth occupancy. Training uses 2–10 Feb; **all results are on 11–18 Feb, days the models never saw.**
@@ -87,3 +89,6 @@ tests/                      conformal coverage (global and per group), no look-a
 
 ## Author
 Hamza Fakhri, Computer Science engineering student, Polytech Nantes. Built on an idea from my 2024 internship on environmental sensor data: how many sensors do you really need?
+
+## License
+MIT, see [LICENSE](LICENSE). The public datasets used here keep their own licenses (sources linked above).
