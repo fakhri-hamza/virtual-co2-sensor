@@ -36,6 +36,31 @@ def trace_chart():
     fig.savefig(RESULTS_DIR / "co2_virtual_vs_real.png", dpi=160)
 
 
+def fault_watch_chart():
+    w = pd.read_csv(RESULTS_DIR / "fault_watch.csv", parse_dates=["day"])
+    widths = pd.read_csv(RESULTS_DIR / "interval_widths.csv", index_col=0)["halfwidth_ppm"]
+    x = range(len(w))
+    fig, ax = plt.subplots(figsize=(9, 4.4))
+    ax.bar([i - 0.2 for i in x], w["coverage_global"] * 100, width=0.4, color="#c6c6c6",
+           label=f"one interval for all minutes (±{widths['global (all minutes)']:.0f} ppm)")
+    ax.bar([i + 0.2 for i in x], w["coverage_conditional"] * 100, width=0.4, color="#2b5c8a",
+           label=f"interval for empty nights only (±{widths['night empty']:.0f} ppm)")
+    ax.axhline(50, color="#d1495b", ls="--", lw=1)
+    ax.text(len(w) - 0.5, 52, "below = flag", color="#d1495b", fontsize=8, ha="right")
+    for i, (_, r) in enumerate(w.iterrows()):
+        ax.text(i, 104, f"{r['night_co2_median']:.0f}", ha="center", fontsize=8, color="#444")
+    ax.text(-0.6, 112, "median CO2 during the night (ppm):", fontsize=8, color="#444")
+    ax.set_xticks(list(x), [d.strftime("%a %d %b") for d in w["day"]], fontsize=8)
+    ax.set_ylabel("night minutes inside the 90% interval (%)")
+    ax.set_ylim(0, 120)
+    ax.set_title("Empty-room CO2 at night: the tight interval flags the fault 2 days earlier", loc="left")
+    ax.legend(frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(0, -0.1), ncol=2)
+    _clean(ax)
+    fig.tight_layout()
+    fig.savefig(RESULTS_DIR / "fault_watch.png", dpi=160)
+    plt.close(fig)
+
+
 def ablation_chart():
     o = pd.read_csv(RESULTS_DIR / "occupancy_ablation.csv")
     best = (o[o["model"] != "-"].sort_values("f1").groupby("sensors").tail(1)
@@ -57,4 +82,5 @@ def ablation_chart():
 if __name__ == "__main__":
     trace_chart()
     ablation_chart()
+    fault_watch_chart()
     print("charts saved to", RESULTS_DIR)

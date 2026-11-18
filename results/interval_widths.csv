@@ -1,0 +1,5 @@
+interval,halfwidth_ppm
+global (all minutes),379.4
+lights off,354.1
+lights on,506.4
+night empty,101.1

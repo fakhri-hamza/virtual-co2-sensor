@@ -1,9 +1,13 @@
-"""Two experiments.
+"""Experiments.
 
 1. Virtual CO2 sensor: predict CO2 (ppm) from cheap sensors + time of day, and attach
    90% conformal prediction intervals. Does the interval really cover 90% on unseen days?
 2. Occupancy sensor ablation: which sensor subset is enough to tell whether the room is
    occupied? Do we need the (expensive) CO2 sensor at all?
+3. Physics check (v0.2): a 3-parameter CO2 mass-balance model driven by "lights on".
+   Can physics do what ML could not?
+4. Fault watch (v0.2): group-conditional conformal intervals. A tight interval for empty
+   nights should catch a ventilation / sensor fault earlier than one interval for everything.
 
 Usage:
     python -m vsensor.experiments
@@ -18,9 +22,11 @@ from sklearn.metrics import (accuracy_score, f1_score, mean_absolute_error,
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from scipy.optimize import minimize
+
 from vsensor import RESULTS_DIR
-from vsensor.conformal import ConformalRegressor, coverage
-from vsensor.data import CHEAP, TARGET_CO2, TARGET_OCC, load
+from vsensor.conformal import ConformalRegressor, MondrianConformalRegressor, coverage
+from vsensor.data import CHEAP, TARGET_CO2, TARGET_OCC, condition_group, load
 
 TIME = ["hour_sin", "hour_cos", "weekend"]
 TRENDS = ["Temperature_d5", "Humidity_d5", "Light_d5"]
@@ -113,6 +119,86 @@ def occupancy_experiment(train: pd.DataFrame, test: pd.DataFrame) -> pd.DataFram
     return pd.DataFrame(rows)
 
 
+def simulate_mass_balance(lights_on, new_segment, gain, decay, base):
+    """CO2[t+1] = CO2[t] + gain * lights_on[t] - decay * (CO2[t] - base), one step per minute.
+
+    gain: ppm added per minute while the room is (probably) occupied; decay: share of the excess
+    over `base` removed by ventilation each minute. Restarts at `base` after a data gap.
+    """
+    c = np.empty(len(lights_on))
+    c[0] = base
+    for t in range(1, len(c)):
+        prev = base if new_segment[t] else c[t - 1]
+        c[t] = prev + gain * lights_on[t - 1] - decay * (prev - base)
+    return c
+
+
+def physics_experiment(train: pd.DataFrame, test: pd.DataFrame) -> pd.DataFrame:
+    def inputs(df):
+        gaps = df["date"].diff().dt.total_seconds().fillna(np.inf) > 300
+        return (df["Light"] > 200).to_numpy(float), gaps.to_numpy()
+
+    on_tr, gap_tr = inputs(train)
+    on_te, gap_te = inputs(test)
+    y_tr = train[TARGET_CO2].to_numpy()
+
+    def loss(p):
+        gain, decay, base = p
+        if not 0 < decay < 1:
+            return 1e12
+        return np.mean(np.abs(simulate_mass_balance(on_tr, gap_tr, gain, decay, base) - y_tr))
+
+    res = minimize(loss, [5.0, 0.01, 450.0], method="Nelder-Mead",
+                   options={"maxiter": 600, "xatol": 1e-4, "fatol": 0.01})
+    gain, decay, base = res.x
+    pred = simulate_mass_balance(on_te, gap_te, gain, decay, base)
+    normal = (test["date"] < "2015-02-16").to_numpy()   # before the night-time CO2 drift
+    y = test[TARGET_CO2].to_numpy()
+    return pd.DataFrame([{
+        "gain_ppm_per_min": gain, "ventilation_time_constant_min": 1 / decay, "base_ppm": base,
+        "MAE_train": res.fun,
+        "MAE_test_before_drift": mean_absolute_error(y[normal], pred[normal]),
+        "MAE_mean_baseline_before_drift": mean_absolute_error(y[normal], np.full(normal.sum(), y_tr.mean())),
+    }])
+
+
+def fault_watch(train: pd.DataFrame, test: pd.DataFrame) -> pd.DataFrame:
+    """Per test night (00:00-06:00, lights off): is the empty-room CO2 inside the 90% interval?
+
+    Compares one global interval (split conformal) with group-conditional intervals
+    (Mondrian conformal). Same linear model and calibration data for both.
+    A night is flagged when fewer than half of its minutes are inside the interval.
+    """
+    cut = int(len(train) * 0.8)
+    fit, cal = train.iloc[:cut], train.iloc[cut:]
+
+    def linear():
+        return make_pipeline(StandardScaler(), LinearRegression())
+
+    plain = ConformalRegressor(linear(), alpha=0.1).fit(
+        fit[FEATURES_CO2], fit[TARGET_CO2], cal[FEATURES_CO2], cal[TARGET_CO2])
+    mond = MondrianConformalRegressor(linear(), alpha=0.1).fit(
+        fit[FEATURES_CO2], fit[TARGET_CO2], cal[FEATURES_CO2], cal[TARGET_CO2], condition_group(cal))
+    groups = condition_group(test)
+    y = test[TARGET_CO2].to_numpy()
+    _, lo_p, hi_p = plain.predict(test[FEATURES_CO2])
+    _, lo_m, hi_m = mond.predict(test[FEATURES_CO2], groups)
+    night = groups == "night empty"
+    t = pd.DataFrame({
+        "day": test["date"].dt.date.to_numpy()[night],
+        "co2": y[night],
+        "in_global": ((y >= np.maximum(lo_p, OUTDOOR_PPM)) & (y <= hi_p))[night],
+        "in_conditional": ((y >= np.maximum(lo_m, OUTDOOR_PPM)) & (y <= hi_m))[night],
+    })
+    out = t.groupby("day").agg(night_co2_median=("co2", "median"),
+                               coverage_global=("in_global", "mean"),
+                               coverage_conditional=("in_conditional", "mean")).reset_index()
+    out["flag_global"] = np.where(out["coverage_global"] < 0.5, "FAULT?", "ok")
+    out["flag_conditional"] = np.where(out["coverage_conditional"] < 0.5, "FAULT?", "ok")
+    widths = {"global (all minutes)": plain.q, **mond.q}
+    return out, widths
+
+
 def main() -> None:
     train, test = load()
     print(f"train: {len(train):,} minutes ({train['date'].min():%d %b} to {train['date'].max():%d %b}) | "
@@ -130,7 +216,20 @@ def main() -> None:
     print("\nPer test day (linear model)")
     print(days.round(3).to_string(index=False))
 
-    occ =occupancy_experiment(train, test)
+    phys = physics_experiment(train, test)
+    phys.to_csv(RESULTS_DIR / "physics_model.csv", index=False, float_format="%.3f")
+    print("\nPhysics check: 3-parameter CO2 mass balance driven by 'lights on'")
+    print(phys.round(3).to_string(index=False))
+
+    watch, widths = fault_watch(train, test)
+    watch.to_csv(RESULTS_DIR / "fault_watch.csv", index=False, float_format="%.3f")
+    pd.Series(widths, name="halfwidth_ppm").rename_axis("interval").to_csv(
+        RESULTS_DIR / "interval_widths.csv", float_format="%.1f")
+    print("\nFault watch: empty-room nights, global vs group-conditional 90% intervals")
+    print("half-widths (ppm):", {k: round(v) for k, v in widths.items()})
+    print(watch.round(3).to_string(index=False))
+
+    occ = occupancy_experiment(train, test)
     occ.to_csv(RESULTS_DIR / "occupancy_ablation.csv", index=False, float_format="%.4f")
     print("\nOccupancy detection by sensor subset")
     print(occ.round(4).to_string(index=False))

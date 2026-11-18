@@ -1,0 +1,2 @@
+gain_ppm_per_min,ventilation_time_constant_min,base_ppm,MAE_train,MAE_test_before_drift,MAE_mean_baseline_before_drift
+8.901,68.081,442.502,98.140,145.565,91.378

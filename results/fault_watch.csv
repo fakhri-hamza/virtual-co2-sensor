@@ -1,0 +1,8 @@
+day,night_co2_median,coverage_global,coverage_conditional,flag_global,flag_conditional
+2015-02-12,555.000,0.994,0.706,ok,ok
+2015-02-13,576.500,1.000,0.564,ok,ok
+2015-02-14,503.000,1.000,1.000,ok,ok
+2015-02-15,547.000,1.000,1.000,ok,ok
+2015-02-16,825.000,0.986,0.000,ok,FAULT?
+2015-02-17,722.000,1.000,0.000,ok,FAULT?
+2015-02-18,1366.250,0.000,0.000,FAULT?,FAULT?
