@@ -1,6 +1,6 @@
 # Virtual CO₂ Sensor
 
-[![ci](https://github.com/Zolnarb1/virtual-co2-sensor/actions/workflows/ci.yml/badge.svg)](https://github.com/Zolnarb1/virtual-co2-sensor/actions/workflows/ci.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![ci](https://github.com/fakhri-hamza/virtual-co2-sensor/actions/workflows/ci.yml/badge.svg)](https://github.com/fakhri-hamza/virtual-co2-sensor/actions/workflows/ci.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Can cheap sensors (temperature, humidity, light) replace a CO₂ sensor, for estimating air quality or for detecting whether a room is occupied? And can the model tell when the real sensor is wrong?**
 
